@@ -1,0 +1,29 @@
+<script type="text/javascript">
+    RED.nodes.registerType('hailo-libero-command', {
+        category: 'hailo-libero',
+        defaults: {
+            device: { value: "", type: "hailo-libero-device", required: true },
+            name: { value: "" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "bridge.svg",
+        label: function () {
+            return this.name || 'hailo-libero-command';
+        },
+    });
+</script>
+
+<script type="text/html" data-template-name="hailo-libero-command">
+    <div class="form-row">
+        <label for="node-input-device"><i class="fa fa-server"></i> Device</label>
+        <input type="text" id="node-input-device" />
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <p>A simple node that sends a command to the Hailo Libero device</p>
+</script>

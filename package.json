@@ -1,6 +1,6 @@
 {
   "name": "@foorschtbar/node-red-contrib-hailo-libero",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Node-RED node for Hailo Libero 3.0 hand free trash bin opener",
   "license": "MIT",
   "keywords": [
@@ -11,18 +11,26 @@
     "session",
     "cookie"
   ],
+  "bugs": {
+    "url": "https://github.com/foorschtbar/node-red-contrib-hailo-libero/issues"
+  },
+  "homepage": "https://github.com/foorschtbar/node-red-contrib-hailo-libero#readme",
   "node-red": {
+    "version": ">=4.0.0",
     "nodes": {
-      "hailo-libero-device": "hailo-libero-device.js",
-      "hailo-libero-command": "hailo-libero-command.js"
+      "hailo-libero-device": "src/hailo-libero-device.js",
+      "hailo-libero-command": "src/hailo-libero-command.js"
     }
   },
   "dependencies": {
     "axios": "^1.13.2",
-    "tough-cookie": "^6.0.0",
-    "axios-cookiejar-support": "^6.0.5"
+    "axios-cookiejar-support": "^6.0.5",
+    "tough-cookie": "^6.0.0"
   },
   "author": {
     "name": "foorschtbar"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

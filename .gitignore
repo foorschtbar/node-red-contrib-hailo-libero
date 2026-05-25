@@ -1,2 +1,6 @@
-data
-compose.yml
+node_modules
+package-lock.json
+dist
+build
+.vscode
+.env

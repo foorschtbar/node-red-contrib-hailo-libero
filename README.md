@@ -202,3 +202,10 @@ In the command node, you need to configure the device with the following paramet
 ]
 ```
 
+## Release workflow
+
+- Change the version in `package.json`
+- Update the `package-lock.json` by running `npm install`
+- Create commit
+- Tag the commit with the new version
+- Push the commit and the tag to GitHub `git push origin main --tags`

@@ -12,6 +12,7 @@ module.exports = function (RED) {
         node.protocol = config.protocol;
         // debug flag from config (checkbox)
         node.debugEnabled = !!config.debug;
+        node.keepLoggedIn = config.keepLoggedIn !== false; // default true
         node.pin = node.credentials.pin;
 
         node.loggedIn = false;
@@ -32,13 +33,15 @@ module.exports = function (RED) {
             );
 
             if (node.debugEnabled) attachDebug(client, node);
-            
+
             return client;
         }
 
-        node.login = async function (force = false) {
+        node.login = async function (force = false, statusLabel = "Logging in") {
             if (node.loggingIn) return;
             if (node.loggedIn && !force) return;
+
+            if (node.debugEnabled) node.debug("login() called — force: " + force + ", statusLabel: " + statusLabel);
 
             node.loggingIn = true;
 
@@ -47,7 +50,7 @@ module.exports = function (RED) {
                 node.emit && node.emit('status', {
                     fill: "yellow",
                     shape: "ring",
-                    text: "Logging in",
+                    text: statusLabel,
                 });
             } catch (e) {
                 node.warn("Failed to emit login-start status: " + e.message);
@@ -72,9 +75,9 @@ module.exports = function (RED) {
                 });
 
                 // Ensure server returned a 301 redirect. This commonly indicates a successful login.
-                if(res.status === 200) {
+                if (res.status === 200) {
                     throw new Error("Login failed: Check PIN is correct or too many login attempts");
-                }else if (res.status !== 301) {
+                } else if (res.status !== 301) {
                     throw new Error("Login failed: Unknown error (Status Code: " + res.status + ")");
                 }
 
@@ -91,7 +94,7 @@ module.exports = function (RED) {
                 } else {
                     if (node.debugEnabled) node.debug("No set-cookie headers present on 301 login response");
                 }
-                
+
 
                 node.loggedIn = true;
                 node.lastLogin = Date.now();
@@ -143,12 +146,24 @@ module.exports = function (RED) {
         node.on("close", () => {
             if (node.loginTimer) {
                 clearInterval(node.loginTimer);
+                node.loginTimer = null;
             }
         });
 
-        setImmediate(() => {
-    node.login().catch(() => {});
-});
+        if (node.keepLoggedIn) {
+            node.log("keepLoggedIn enabled: initial login on flow start, session refresh every 60s");
+
+            setImmediate(() => {
+                if (node.debugEnabled) node.debug("keepLoggedIn: triggering initial login");
+                node.login().catch(() => { });
+            });
+
+            node.loginTimer = setInterval(() => {
+                node.log("keepLoggedIn: refreshing session (scheduled)");
+                if (node.debugEnabled) node.debug("keepLoggedIn: refresh interval fired at " + new Date().toISOString());
+                node.login(true, "Refreshing session").catch(() => { });
+            }, 60 * 1000);
+        }
     }
 
     RED.nodes.registerType("hailo-libero-device", HailoLiberoDeviceNode, {
@@ -158,24 +173,24 @@ module.exports = function (RED) {
     });
 
     function attachDebug(client, node) {
-            client.interceptors.request.use(req => {
-            
-                node.debug("➡️ HTTP REQUEST");
-                node.debug("Method: " + req.method.toUpperCase() + " URL: " + req.baseURL + req.url);
-                node.debug("Headers: " + JSON.stringify(req.headers));
-                node.debug("Data: " + JSON.stringify(req.data));
-            
+        client.interceptors.request.use(req => {
+
+            node.debug("➡️ HTTP REQUEST");
+            node.debug("Method: " + req.method.toUpperCase() + " URL: " + req.baseURL + req.url);
+            node.debug("Headers: " + JSON.stringify(req.headers));
+            node.debug("Data: " + JSON.stringify(req.data));
+
             return req;
         });
 
         client.interceptors.response.use(
             res => {
-                
-                    node.debug("⬅️ HTTP RESPONSE");
-                    node.debug("Status: " + res.status);
-                    node.debug("Headers: " + JSON.stringify(res.headers));
-                    node.debug("Data: " + JSON.stringify(res.data));
-                
+
+                node.debug("⬅️ HTTP RESPONSE");
+                node.debug("Status: " + res.status);
+                node.debug("Headers: " + JSON.stringify(res.headers));
+                node.debug("Data: " + JSON.stringify(res.data));
+
                 return res;
             },
             err => {

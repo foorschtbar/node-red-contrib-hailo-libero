@@ -5,6 +5,7 @@
             host: { value: "", required: true },
             port: { value: 81, required: true },
             protocol: { value: "http", required: true },
+            keepLoggedIn: { value: true },
             debug: { value: false }
         },
         credentials: {
@@ -38,6 +39,11 @@
     <div class="form-row">
         <label for="node-config-input-pin">PIN</label>
         <input id="node-config-input-pin" type="password" >
+    </div>
+
+    <div class="form-row">
+        <label for="node-config-input-keepLoggedIn">Keep logged in</label>
+        <input id="node-config-input-keepLoggedIn" type="checkbox">
     </div>
 
     <div class="form-row">

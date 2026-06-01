@@ -100,23 +100,14 @@ module.exports = function (RED) {
                 node.lastLogin = Date.now();
                 node.log("Hailo Libero login successful");
 
-                node.status({
+                // notify listeners (e.g. command nodes) about successful login/status
+                
+                node.emit && node.emit('status', {
                     fill: "green",
                     shape: "ring",
                     text: "Hailo Libero login successful",
                 });
-
-                // notify listeners (e.g. command nodes) about successful login/status
-                try {
-                    node.emit && node.emit('status', {
-                        fill: "green",
-                        shape: "ring",
-                        text: "Hailo Libero login successful",
-                    });
-                } catch (e) {
-                    node.warn("Failed to emit login-success status: " + e.message);
-                }
-
+               
                 // debug cookies
                 const cookies = await node.jar.getCookies(`${node.protocol}://${node.host}:${node.port}`);
                 if (node.debugEnabled) {
@@ -127,15 +118,13 @@ module.exports = function (RED) {
                 node.error("Hailo Libero login failed", err);
 
                 // notify listeners about failed login/status
-                try {
-                    node.emit && node.emit('status', {
-                        fill: "red",
-                        shape: "ring",
-                        text: "Hailo Libero login failed: " + (err && err.message ? err.message : String(err)),
-                    });
-                } catch (e) {
-                    node.warn("Failed to emit login-failed status: " + e.message);
-                }
+                
+                node.emit && node.emit('status', {
+                    fill: "red",
+                    shape: "ring",
+                    text: "Hailo Libero login failed: " + (err && err.message ? err.message : String(err)),
+                });
+                
 
                 throw err;
             } finally {
@@ -145,24 +134,90 @@ module.exports = function (RED) {
 
         node.on("close", () => {
             if (node.loginTimer) {
-                clearInterval(node.loginTimer);
+                clearTimeout(node.loginTimer);
                 node.loginTimer = null;
             }
         });
 
         if (node.keepLoggedIn) {
-            node.log("keepLoggedIn enabled: initial login on flow start, session refresh every 60s");
+            const NORMAL_INTERVAL = 5 * 60 * 1000;       // 5 minutes
+            const BACKOFF_INTERVAL = 60 * 60 * 1000; // 1 hour
+            const FAIL_THRESHOLD = 3;
+
+            node.keepLoginFailCount = 0;
+
+            const scheduleCheck = (delay) => {
+                node.loginTimer = setTimeout(keepAliveCheck, delay);
+            };
+
+            const keepAliveCheck = async () => {
+                if (node.debugEnabled) node.debug("keepLoggedIn: checking session health (GET /)");
+
+                let sessionOk = false;
+                try {
+                    const res = await node.client.get("/", {
+                        validateStatus: null,
+                        maxRedirects: 0,
+                    });
+                    sessionOk = res.status === 200;
+                    if (node.debugEnabled) node.debug("keepLoggedIn: health check response status: " + res.status);
+                } catch (err) {
+                    node.warn("keepLoggedIn: health check request failed: " + (err.message || String(err)));
+                    node.emit && node.emit('status', {
+                        fill: "red",
+                        shape: "ring",
+                        text: "Session health check failed: ",
+                    });
+                }
+
+                if (sessionOk) {
+                    node.keepLoginFailCount = 0;
+                    if (node.debugEnabled) node.debug(`keepLoggedIn: session healthy, next check in ${NORMAL_INTERVAL / 1000}s`);
+                    node.emit && node.emit('status', {
+                        fill: "green",
+                        shape: "ring",
+                        text: "Session healthy, next check in " + (NORMAL_INTERVAL / 1000) + "s",
+                    });
+                    scheduleCheck(NORMAL_INTERVAL);
+                    return;
+                }
+
+                // Session not healthy — attempt re-login
+                node.warn("keepLoggedIn: session not healthy, attempting re-login");
+                try {
+                    await node.login(true, "Re-logging in");
+                    node.keepLoginFailCount = 0;
+                    scheduleCheck(NORMAL_INTERVAL);
+                } catch (err) {
+                    node.keepLoginFailCount++;
+                    if (node.keepLoginFailCount >= FAIL_THRESHOLD) {
+                        node.warn("keepLoggedIn: " + node.keepLoginFailCount + " consecutive failures, backing off to 1h interval");
+                        node.emit && node.emit('status', {
+                            fill: "red",
+                            shape: "ring",
+                            text: `Re-login failed ${node.keepLoginFailCount} times, backing off to 1h interval`,
+                        });
+                        scheduleCheck(BACKOFF_INTERVAL);
+                    } else {
+                        node.warn("keepLoggedIn: re-login failed (" + node.keepLoginFailCount + "/" + FAIL_THRESHOLD + " before backoff), retrying in 60s");
+                        node.emit && node.emit('status', {
+                            fill: "red",
+                            shape: "ring",
+                            text: `Re-login failed ${node.keepLoginFailCount} times, retrying in ${NORMAL_INTERVAL / 1000}s`,
+                        });
+                        scheduleCheck(NORMAL_INTERVAL);
+                    }
+                }
+            };
+
+            node.log("keepLoggedIn enabled: initial login on flow start, session health check every 60s");
 
             setImmediate(() => {
                 if (node.debugEnabled) node.debug("keepLoggedIn: triggering initial login");
-                node.login().catch(() => { });
+                node.login()
+                    .then(() => scheduleCheck(NORMAL_INTERVAL))
+                    .catch(() => scheduleCheck(NORMAL_INTERVAL));
             });
-
-            node.loginTimer = setInterval(() => {
-                node.log("keepLoggedIn: refreshing session (scheduled)");
-                if (node.debugEnabled) node.debug("keepLoggedIn: refresh interval fired at " + new Date().toISOString());
-                node.login(true, "Refreshing session").catch(() => { });
-            }, 60 * 1000);
         }
     }
 
